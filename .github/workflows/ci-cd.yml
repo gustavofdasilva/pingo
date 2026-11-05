@@ -1,0 +1,95 @@
+name: Pingo CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    branches:
+      - main
+
+env:
+  GO_VERSION: "1.23"
+  APP_NAME: "pingo"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.64.8
+
+  test: 
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests
+        run: go test ./... -coverprofile=coverage.out
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs:  
+      - lint
+      - test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Build binary
+        env:
+          CGO_ENABLED: 0
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          go build -ldflags="-s -w -X main.version=${{ github.sha }}" \
+            -o ./bin/${{ env.APP_NAME }} ./cmd/pingo
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}
+          path: ./bin/${{ env.APP_NAME }}
